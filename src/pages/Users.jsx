@@ -177,7 +177,7 @@ export default function Users() {
               <p className="text-red-400 text-xs mt-3 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                 {error}
               </p>
-            )}
+            )} 
 
             <div className="flex gap-3 mt-6">
               <button
