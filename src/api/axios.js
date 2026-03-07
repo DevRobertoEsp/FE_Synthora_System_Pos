@@ -1,7 +1,8 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'http://localhost:8085', // tu Spring Boot
+  baseURL: process.env.REACT_APP_API_URL,
+ // baseURL: 'http://localhost:8085', // Spring Boot LocalHost
 })
 
 // Interceptor — agrega el token automáticamente a cada request
