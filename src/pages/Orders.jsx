@@ -39,6 +39,11 @@ export default function Orders() {
   const [orderItems, setOrderItems] = useState([])
   const [loadingItems, setLoadingItems] = useState(false)
 
+  // flujo Porque cancelaste el pedido? -> opciones: "Cliente se fue", "Error en la cocina", "Otro motivo" + campo de texto
+
+const [showCancelModal, setShowCancelModal] = useState(false)
+const [cancelReason, setCancelReason] = useState('')
+
   const fetchAll = async () => {
     try {
       const [ordersRes, tablesRes, productsRes] = await Promise.all([
@@ -134,19 +139,20 @@ export default function Orders() {
     }
   }
 
-  const handleStatusChange = async (orderId, newStatus) => {
-    try {
-      await api.patch(`/orders/${orderId}/status`, JSON.stringify(newStatus), {
-        headers: { 'Content-Type': 'application/json' }
-      })
-      fetchAll()
-      if (selectedOrder?.id === orderId) {
-        setSelectedOrder(prev => ({ ...prev, status: newStatus }))
-      }
-    } catch (err) {
-      console.error(err)
+  const handleStatusChange = async (orderId, newStatus, cancelReason = null) => {
+  try {
+    await api.patch(`/orders/${orderId}/status`, {
+      status: newStatus,
+      cancelReason: cancelReason,
+    })
+    fetchAll()
+    if (selectedOrder?.id === orderId) {
+      setSelectedOrder(prev => ({ ...prev, status: newStatus }))
     }
+  } catch (err) {
+    console.error(err)
   }
+}
 
   const orderTotal = orderItems.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0)
   const filtered = filter === 'ALL' ? orders : orders.filter(o => o.status === filter)
@@ -164,7 +170,7 @@ export default function Orders() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-serif text-white">Pedidos</h1>
         <button
-          onClick={() => setStep(1)}
+          onClick={() => { fetchAll(); setStep(1) }}
           className="bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold px-4 py-2 rounded-lg transition"
         >
           + Nuevo pedido
@@ -473,6 +479,14 @@ export default function Orders() {
           </div>
         )}
 
+        {/* Aquí va el motivo */}
+{selectedOrder.status === 'CANCELLED' && selectedOrder.cancelReason && (
+  <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 mb-2">
+    <p className="text-xs font-mono text-red-400 uppercase tracking-wider mb-1">Motivo de cancelación</p>
+    <p className="text-sm text-gray-300">{selectedOrder.cancelReason}</p>
+  </div>
+)}
+
         {/* Acciones */}
         <div className="space-y-2 mt-2">
 
@@ -508,12 +522,68 @@ export default function Orders() {
           {/* Cancelar pedido */}
           {(selectedOrder.status === 'OPEN' || selectedOrder.status === 'IN_PROGRESS') && (
             <button
-              onClick={() => handleStatusChange(selectedOrder.id, 'CANCELLED')}
+              onClick={() => setShowCancelModal(true)}
               className="w-full text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 py-2.5 rounded-xl transition"
             >
               ✕ Cancelar pedido
             </button>
           )}
+
+
+{/* MODAL motivo cancelación */}
+{showCancelModal && (
+  <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+    <div className="bg-[#111620] border border-[#242d42] rounded-2xl w-full max-w-sm p-6">
+      <h3 className="font-serif text-lg text-white mb-1">¿Por qué cancelás este pedido?</h3>
+      <p className="text-xs text-gray-500 font-mono mb-4">El motivo quedará registrado internamente.</p>
+
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {['Cliente se fue', 'Error en el pedido', 'Producto no disponible', 'Solicitud del cliente', 'Otro'].map(reason => (
+          <button
+            key={reason}
+            onClick={() => setCancelReason(reason)}
+            className={`text-xs px-3 py-2 rounded-lg border transition text-left
+              ${cancelReason === reason
+                ? 'bg-red-500/15 border-red-500/40 text-red-400'
+                : 'bg-[#0d1017] border-[#1c2130] text-gray-400 hover:border-red-500/20'
+              }`}
+          >
+            {reason}
+          </button>
+        ))}
+      </div>
+
+      <textarea
+        value={cancelReason}
+        onChange={e => setCancelReason(e.target.value)}
+        placeholder="O escribe un motivo personalizado..."
+        rows={2}
+        className="w-full bg-[#0d1017] border border-[#242d42] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-red-500 transition placeholder-gray-600 mb-4 resize-none"
+      />
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => { setShowCancelModal(false); setCancelReason('') }}
+          className="flex-1 text-sm bg-[#0d1017] text-gray-300 py-2.5 rounded-lg border border-[#1c2130] hover:bg-[#1c2130] transition"
+        >
+          Volver
+        </button>
+        <button
+          disabled={!cancelReason.trim()}
+          onClick={async () => {
+            await handleStatusChange(selectedOrder.id, 'CANCELLED', cancelReason)
+            setShowCancelModal(false)
+            setCancelReason('')
+          }}
+          className="flex-1 text-sm bg-red-500 hover:bg-red-400 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-40"
+        >
+          Confirmar cancelación
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+          
 
           {/* Eliminar pedido — solo PAID o CANCELLED */}
           {(selectedOrder.status === 'PAID' || selectedOrder.status === 'CANCELLED') && (

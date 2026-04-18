@@ -65,6 +65,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
 
   const [orders, setOrders] = useState([])
+  const [payments, setPayments] = useState([])
   const [products, setProducts] = useState([])
   const [tables, setTables] = useState([])
   const [loading, setLoading] = useState(true)
@@ -73,17 +74,20 @@ export default function Dashboard() {
   const [rangeStart, setRangeStart] = useState('')
   const [rangeEnd, setRangeEnd] = useState('')
 
+  // ✅ Un solo useEffect con payments incluido
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [ordersRes, productsRes, tablesRes] = await Promise.all([
+        const [ordersRes, productsRes, tablesRes, paymentsRes] = await Promise.all([
           api.get('/orders'),
           api.get('/products'),
           api.get('/tables'),
+          api.get('/payments'),
         ])
         setOrders(ordersRes.data)
         setProducts(productsRes.data)
         setTables(tablesRes.data)
+        setPayments(paymentsRes.data)
       } catch (err) {
         console.error(err)
       } finally {
@@ -96,19 +100,15 @@ export default function Dashboard() {
   // ── Filtrar pedidos por período ──
   const getFilteredOrders = () => {
     let start, end
-
     if (period === 'range') {
       if (!rangeStart || !rangeEnd) return []
-      start = new Date(rangeStart)
-      start.setHours(0, 0, 0, 0)
-      end = new Date(rangeEnd)
-      end.setHours(23, 59, 59, 999)
+      start = new Date(rangeStart); start.setHours(0, 0, 0, 0)
+      end = new Date(rangeEnd);     end.setHours(23, 59, 59, 999)
     } else {
       const range = getRange(period)
       start = range.start
       end = range.end
     }
-
     return orders.filter(o => {
       if (!o.createdAt) return false
       const d = new Date(o.createdAt)
@@ -116,25 +116,41 @@ export default function Dashboard() {
     })
   }
 
-  const filteredOrders = getFilteredOrders()
-  const paidOrders = filteredOrders.filter(o => o.status === 'PAID')
-  const totalSales = paidOrders.reduce((sum, o) => sum + (parseFloat(o.total) || 0), 0)
-  const activeOrders = filteredOrders.filter(o => o.status === 'OPEN' || o.status === 'IN_PROGRESS').length
-  const cancelledOrders = filteredOrders.filter(o => o.status === 'CANCELLED').length
+  // ── Filtrar payments por período ──
+  const getFilteredPayments = () => {
+    let start, end
+    if (period === 'range') {
+      if (!rangeStart || !rangeEnd) return []
+      start = new Date(rangeStart); start.setHours(0, 0, 0, 0)
+      end   = new Date(rangeEnd);   end.setHours(23, 59, 59, 999)
+    } else {
+      const range = getRange(period)
+      start = range.start
+      end   = range.end
+    }
+    return payments.filter(p => {
+      const d = new Date(p.paidAt)
+      return d >= start && d <= end
+    })
+  }
 
-  // ── Datos para gráfica de ventas por día ──
+  const filteredOrders   = getFilteredOrders()
+  const filteredPayments = getFilteredPayments()
+  const totalSales       = filteredPayments.reduce((sum, p) => sum + (parseFloat(p.total) || 0), 0)
+  const paidCount        = filteredPayments.length
+  const activeOrders     = filteredOrders.filter(o => o.status === 'OPEN' || o.status === 'IN_PROGRESS').length
+  const cancelledOrders  = filteredOrders.filter(o => o.status === 'CANCELLED').length
+
+  // ✅ Gráfica de ventas por día — ahora usa payments
   const getSalesChartData = () => {
     let start, end
-
     if (period === 'range' && rangeStart && rangeEnd) {
-      start = new Date(rangeStart)
-      start.setHours(0, 0, 0, 0)
-      end = new Date(rangeEnd)
-      end.setHours(23, 59, 59, 999)
+      start = new Date(rangeStart); start.setHours(0, 0, 0, 0)
+      end   = new Date(rangeEnd);   end.setHours(23, 59, 59, 999)
     } else if (period !== 'range') {
       const range = getRange(period)
       start = range.start
-      end = range.end
+      end   = range.end
     } else {
       return []
     }
@@ -142,17 +158,17 @@ export default function Dashboard() {
     const days = getDaysBetween(start, end)
     return days.map(day => {
       const dayStr = formatDate(day)
-      const dayOrders = orders.filter(o => {
-        if (!o.createdAt || o.status !== 'PAID') return false
-        const d = new Date(o.createdAt)
-        return formatDate(d) === dayStr
+      // ✅ Lee de payments, no de orders
+      const dayPayments = payments.filter(p => {
+        if (!p.paidAt) return false
+        return formatDate(new Date(p.paidAt)) === dayStr
       })
-      const ventas = dayOrders.reduce((sum, o) => sum + (parseFloat(o.total) || 0), 0)
+      const ventas = dayPayments.reduce((sum, p) => sum + (parseFloat(p.total) || 0), 0)
       return { dia: dayStr, Ventas: parseFloat(ventas.toFixed(2)) }
     })
   }
 
-  // ── Datos para gráfica de productos más vendidos ──
+  // ✅ Productos más vendidos — sigue usando orders (los items viven ahí)
   const getTopProducts = () => {
     const counts = {}
     orders
@@ -169,7 +185,7 @@ export default function Dashboard() {
       .slice(0, 6)
   }
 
-  const salesData = getSalesChartData()
+  const salesData   = getSalesChartData()
   const topProducts = getTopProducts()
 
   if (loading) return (
@@ -212,8 +228,6 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
-
-        {/* Selector de rango */}
         {period === 'range' && (
           <div className="flex gap-3 items-center flex-wrap">
             <div>
@@ -243,7 +257,7 @@ export default function Dashboard() {
         <div className="bg-[#111620] border border-[#1c2130] border-t-2 border-t-amber-500 rounded-xl p-4">
           <div className="text-xs font-mono text-gray-400 uppercase tracking-wider mb-2">Ventas</div>
           <div className="font-serif text-2xl text-white">${totalSales.toFixed(2)}</div>
-          <div className="text-xs text-gray-500 mt-1">{paidOrders.length} cobrados</div>
+          <div className="text-xs text-gray-500 mt-1">{paidCount} cobrados</div>
         </div>
         <div className="bg-[#111620] border border-[#1c2130] border-t-2 border-t-blue-500 rounded-xl p-4">
           <div className="text-xs font-mono text-gray-400 uppercase tracking-wider mb-2">Pedidos</div>
@@ -264,8 +278,6 @@ export default function Dashboard() {
 
       {/* Gráficas */}
       <div className="grid md:grid-cols-2 gap-4">
-
-        {/* Ventas por día */}
         <div className="bg-[#111620] border border-[#1c2130] rounded-xl p-4">
           <h3 className="text-sm font-serif text-white mb-4">Ventas por día</h3>
           {salesData.length === 0 ? (
@@ -287,25 +299,16 @@ export default function Dashboard() {
                 <XAxis dataKey="dia" tick={{ fill: '#5a6478', fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#5a6478', fontSize: 10 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="Ventas"
-                  stroke="#e8a435"
-                  strokeWidth={2}
-                  fill="url(#colorVentas)"
-                />
+                <Area type="monotone" dataKey="Ventas" stroke="#e8a435" strokeWidth={2} fill="url(#colorVentas)" />
               </AreaChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        {/* Productos más vendidos */}
         <div className="bg-[#111620] border border-[#1c2130] rounded-xl p-4">
           <h3 className="text-sm font-serif text-white mb-4">Productos más vendidos</h3>
           {topProducts.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-gray-500 text-sm">
-              Sin datos aún
-            </div>
+            <div className="flex items-center justify-center h-40 text-gray-500 text-sm">Sin datos aún</div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={topProducts}>
