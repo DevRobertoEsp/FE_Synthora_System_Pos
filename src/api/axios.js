@@ -1,8 +1,8 @@
 import axios from 'axios'
 
 const api = axios.create({
-  // baseURL: import.meta.env.VITE_API_URL,
-  baseURL: 'https://be-synthora-system-pos-xpmc.onrender.com', // Spring Boot LocalHost
+  baseURL: import.meta.env.VITE_API_URL,
+  //baseURL: 'https://be-synthora-system-pos-xpmc.onrender.com', // Spring Boot LocalHost
   //baseURL: 'http://localhost:8085',
 })
 
